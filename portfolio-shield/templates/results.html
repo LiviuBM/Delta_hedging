@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Analysis — Portfolio Shield</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0e1a;
+            --bg2: #111827;
+            --bg3: #1a2234;
+            --gold: #c9a84c;
+            --teal: #2dd4bf;
+            --red: #f87171;
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --border: #2a3346;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in       { animation: fadeUp 0.5s ease-out both; }
+        .fade-in-delay  { animation: fadeUp 0.5s ease-out 0.15s both; }
+        .fade-in-delay2 { animation: fadeUp 0.5s ease-out 0.3s both; }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+        .header h1 {
+            font-family: 'DM Serif Display', serif;
+            font-size: 2rem;
+            color: var(--gold);
+        }
+        .btn-back {
+            padding: 0.5rem 1.25rem;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: border-color 0.2s;
+        }
+        .btn-back:hover { border-color: var(--gold); }
+
+        .timestamp {
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Tab switcher */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--border);
+        }
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active {
+            color: var(--gold);
+            border-bottom-color: var(--gold);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Summary bar */
+        .summary-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .summary-stat {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .summary-stat .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
+        }
+        .summary-stat .stat-value {
+            font-family: 'DM Mono', monospace;
+            font-size: 1.35rem;
+            font-weight: 500;
+        }
+        .summary-stat .stat-sub {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.15rem;
+        }
+        .val-gold { color: var(--gold); }
+        .val-teal { color: var(--teal); }
+        .val-red  { color: var(--red); }
+
+        /* Beta badge */
+        .beta-badge {
+            display: inline-block;
+            font-family: 'DM Mono', monospace;
+            font-size: 1.35rem;
+            font-weight: 500;
+            padding: 0.1rem 0.5rem;
+            border-radius: 6px;
+        }
+        .beta-badge.defensive  { color: var(--teal); background: rgba(45,212,191,0.1); }
+        .beta-badge.market     { color: var(--gold); background: rgba(201,168,76,0.1); }
+        .beta-badge.aggressive { color: var(--red); background: rgba(248,113,113,0.1); }
+        .beta-interpret {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.2rem;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .card-title {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.2rem;
+            color: var(--gold);
+            margin-bottom: 1.25rem;
+        }
+
+        /* Pie charts */
+        .pies-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        .pie-section { text-align: center; }
+        .pie-section h3 {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1rem;
+            color: var(--text);
+            margin-bottom: 1rem;
+        }
+        .pie-svg { display: block; margin: 0 auto 1rem; }
+        .pie-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem 1rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .weight-arrow {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.7rem;
+            margin-left: 0.2rem;
+        }
+        .weight-arrow.up   { color: var(--teal); }
+        .weight-arrow.down { color: var(--red); }
+
+        /* Evolution chart */
+        .chart-wrap { overflow-x: auto; }
+        .chart-svg { display: block; width: 100%; height: auto; }
+
+        /* Tables */
+        .options-table { width: 100%; border-collapse: collapse; }
+        .options-table th {
+            text-align: left;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            padding: 0.6rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .options-table td {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.85rem;
+            padding: 0.7rem 0.75rem;
+            border-bottom: 1px solid rgba(42, 51, 70, 0.5);
+            vertical-align: middle;
+        }
+        .options-table tr:last-child td { border-bottom: none; }
+        .options-table .ticker-col { font-weight: 500; color: var(--text); }
+        .options-table .cost-col { color: var(--gold); }
+        .options-table-wrap { overflow-x: auto; }
+        .pnl-pos { color: var(--teal); }
+        .pnl-neg { color: var(--red); }
+
+        /* Hedge-specific */
+        .summary-banner {
+            background: linear-gradient(135deg, rgba(201,168,76,0.1), rgba(45,212,191,0.05));
+            border: 1px solid var(--gold);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .summary-banner .summary-text {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.35rem;
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .summary-banner .summary-text strong { color: var(--gold); }
+        .summary-banner .summary-sub {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 0.5rem;
+        }
+
+        .fallback-warning {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid var(--red);
+            border-radius: 8px;
+            padding: 0.85rem 1.25rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.9rem;
+        }
+        .fallback-warning .warn-icon { font-size: 1.2rem; }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .metric-box {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .metric-box .metric-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            margin-bottom: 0.4rem;
+        }
+        .metric-box .metric-value {
+            font-family: 'DM Mono', monospace;
+            font-size: 1.6rem;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .metric-box .metric-value.gold { color: var(--gold); }
+        .metric-box .metric-value.teal { color: var(--teal); }
+        .metric-box .metric-value.red  { color: var(--red); }
+        .metric-box .metric-sub {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-top: 0.2rem;
+        }
+
+        .fallback-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-family: 'DM Sans', sans-serif;
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--red);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.4rem;
+            vertical-align: middle;
+        }
+        .error-row td {
+            color: var(--red);
+            font-family: 'DM Sans', sans-serif;
+            font-style: italic;
+        }
+
+        .cost-chart { display: flex; flex-direction: column; gap: 0.65rem; }
+        .cost-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+        .cost-bar-label { width: 60px; font-size: 0.8rem; font-weight: 500; text-align: right; flex-shrink: 0; }
+        .cost-bar-track { flex: 1; height: 28px; background: var(--bg3); border-radius: 6px; overflow: hidden; }
+        .cost-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            background: linear-gradient(90deg, var(--gold), #dbb85e);
+            display: flex;
+            align-items: center;
+            padding-left: 0.6rem;
+            min-width: 2px;
+            transition: width 0.6s ease-out;
+        }
+        .cost-bar-amount {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--bg);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .steps-list { counter-reset: step; list-style: none; }
+        .steps-list li {
+            counter-increment: step;
+            padding: 0.6rem 0 0.6rem 2.5rem;
+            position: relative;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            border-bottom: 1px solid rgba(42, 51, 70, 0.3);
+        }
+        .steps-list li:last-child { border-bottom: none; }
+        .steps-list li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            width: 1.8rem;
+            height: 1.8rem;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'DM Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--gold);
+        }
+
+        /* Performer boxes */
+        .perf-boxes { display: flex; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; }
+        .perf-box {
+            flex: 1;
+            min-width: 200px;
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+        }
+        .perf-box-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        .perf-box-value { font-family: 'DM Mono', monospace; font-size: 1rem; }
+
+        .beta-insight {
+            margin-top: 1.25rem;
+            padding: 0.85rem 1rem;
+            background: var(--bg3);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 700px) {
+            .summary-bar { grid-template-columns: 1fr 1fr; }
+            .metrics { grid-template-columns: 1fr; }
+            .pies-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.5rem; }
+            .container { padding: 1.25rem 1rem; }
+            .summary-banner { padding: 1.2rem 1rem; }
+            .summary-banner .summary-text { font-size: 1.1rem; }
+        }
+        @media (max-width: 500px) {
+            .summary-bar { grid-template-columns: 1fr; }
+            .options-table-wrap { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- Header -->
+        <div class="header fade-in">
+            <h1>Portfolio Shield</h1>
+            <a href="/" class="btn-back">&larr; New Calculation</a>
+        </div>
+
+        <div class="timestamp fade-in">Prices as of {{ result.timestamp }}</div>
+
+        <!-- ========== SUMMARY BAR (always visible) ========== -->
+        <div class="summary-bar fade-in">
+            <div class="summary-stat">
+                <div class="stat-label">Cost Basis</div>
+                <div class="stat-value">${{ "{:,.0f}".format(performance.cost_basis) }}</div>
+            </div>
+            <div class="summary-stat">
+                <div class="stat-label">Current Value</div>
+                <div class="stat-value val-gold">${{ "{:,.0f}".format(performance.current_value) }}</div>
+            </div>
+            <div class="summary-stat">
+                <div class="stat-label">Total P&amp;L</div>
+                <div class="stat-value {{ 'val-teal' if performance.total_pnl >= 0 else 'val-red' }}">
+                    {{ '+' if performance.total_pnl >= 0 else '' }}${{ "{:,.0f}".format(performance.total_pnl) }}
+                </div>
+                <div class="stat-sub">{{ '+' if performance.total_pnl_pct >= 0 else '' }}{{ "%.1f"|format(performance.total_pnl_pct) }}%</div>
+            </div>
+            <div class="summary-stat">
+                <div class="stat-label">Portfolio Beta</div>
+                {% if portfolio_beta.portfolio_beta is not none %}
+                {% set b = portfolio_beta.portfolio_beta %}
+                <div class="beta-badge {{ 'defensive' if b < 0.8 else ('aggressive' if b > 1.2 else 'market') }}">
+                    {{ "%.2f"|format(b) }}
+                </div>
+                <div class="beta-interpret">
+                    {% if b < 0.8 %}Defensive{% elif b > 1.2 %}Aggressive{% else %}Market-like{% endif %}
+                </div>
+                {% else %}
+                <div class="stat-value" style="color:var(--text-dim)">N/A</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ========== TAB SWITCHER ========== -->
+        <div class="tab-bar fade-in-delay">
+            <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+            <button class="tab-btn" onclick="switchTab('hedge',this)">Hedge Strategy</button>
+        </div>
+
+        <!-- ==========================================
+             TAB: OVERVIEW
+             ========================================== -->
+        <div id="tab-overview" class="tab-content active fade-in-delay">
+
+            <!-- Allocation Pie Charts -->
+            {% if svg.pie_initial %}
+            <div class="card">
+                <div class="card-title">Portfolio Allocation</div>
+                <div class="pies-grid">
+
+                    <!-- Initial Weights -->
+                    <div class="pie-section">
+                        <h3>Initial Weights</h3>
+                        <svg class="pie-svg" viewBox="-1.3 -1.3 2.6 2.6" width="200" height="200">
+                            {% for s in svg.pie_initial %}
+                            <path d="{{ s.path }}" fill="{{ s.color }}" stroke="var(--bg2)" stroke-width="0.02">
+                                <title>{{ s.ticker }}: {{ s.pct }}%</title>
+                            </path>
+                            {% if s.show_label %}
+                            <text x="{{ s.label_x }}" y="{{ s.label_y }}"
+                                  text-anchor="middle" dominant-baseline="central"
+                                  fill="var(--bg)" font-size="0.13" font-family="DM Sans, sans-serif" font-weight="700">
+                                {{ s.ticker }}
+                            </text>
+                            {% endif %}
+                            {% endfor %}
+                        </svg>
+                        <div class="pie-legend">
+                            {% for s in svg.pie_initial %}
+                            <span class="legend-item">
+                                <span class="legend-dot" style="background:{{ s.color }}"></span>
+                                {{ s.ticker }} {{ s.pct }}%
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Live Weights -->
+                    <div class="pie-section">
+                        <h3>Live Weights</h3>
+                        <svg class="pie-svg" viewBox="-1.3 -1.3 2.6 2.6" width="200" height="200">
+                            {% for s in svg.pie_live %}
+                            <path d="{{ s.path }}" fill="{{ s.color }}" stroke="var(--bg2)" stroke-width="0.02">
+                                <title>{{ s.ticker }}: {{ s.pct }}%</title>
+                            </path>
+                            {% if s.show_label %}
+                            <text x="{{ s.label_x }}" y="{{ s.label_y }}"
+                                  text-anchor="middle" dominant-baseline="central"
+                                  fill="var(--bg)" font-size="0.13" font-family="DM Sans, sans-serif" font-weight="700">
+                                {{ s.ticker }}
+                            </text>
+                            {% endif %}
+                            {% endfor %}
+                        </svg>
+                        <div class="pie-legend">
+                            {% for pos in performance.positions %}
+                            {% set delta = pos.weight - pos.cost_weight %}
+                            <span class="legend-item">
+                                <span class="legend-dot" style="background:{{ svg.palette[loop.index0 % svg.palette|length] }}"></span>
+                                {{ pos.ticker }} {{ pos.weight }}%
+                                {% if delta|abs > 1.0 %}
+                                <span class="weight-arrow {{ 'up' if delta > 0 else 'down' }}">
+                                    {{ '\u2191' if delta > 0 else '\u2193' }}{{ "%.1f"|format(delta|abs) }}
+                                </span>
+                                {% endif %}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Portfolio Evolution Chart -->
+            {% if svg.chart.has_data %}
+            <div class="card">
+                <div class="card-title">Portfolio Evolution (1 Year)</div>
+                <div class="chart-wrap">
+                    <svg class="chart-svg" viewBox="0 0 {{ svg.chart.ch_w }} {{ svg.chart.ch_h }}" preserveAspectRatio="xMidYMid meet">
+                        <!-- Plot background -->
+                        <rect x="{{ svg.chart.plot_x }}" y="{{ svg.chart.plot_y }}"
+                              width="{{ svg.chart.plot_w }}" height="{{ svg.chart.plot_h }}"
+                              fill="var(--bg3)" rx="4"/>
+
+                        <!-- Y-axis grid + labels -->
+                        {% for yl in svg.chart.y_labels %}
+                        <line x1="{{ svg.chart.plot_x }}" y1="{{ yl.y }}"
+                              x2="{{ svg.chart.plot_x + svg.chart.plot_w }}" y2="{{ yl.y }}"
+                              stroke="var(--border)" stroke-width="0.5" opacity="0.4"/>
+                        <text x="{{ svg.chart.plot_x - 8 }}" y="{{ yl.y }}"
+                              text-anchor="end" dominant-baseline="central"
+                              fill="var(--text-dim)" font-family="DM Mono, monospace" font-size="9">{{ yl.label }}</text>
+                        {% endfor %}
+
+                        <!-- Cost basis dashed line -->
+                        {% if svg.chart.cb_in_range %}
+                        <line x1="{{ svg.chart.plot_x }}" y1="{{ svg.chart.cb_y }}"
+                              x2="{{ svg.chart.plot_x + svg.chart.plot_w }}" y2="{{ svg.chart.cb_y }}"
+                              stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="6,4" opacity="0.6"/>
+                        <text x="{{ svg.chart.plot_x + 4 }}" y="{{ svg.chart.cb_y|float - 6 }}"
+                              fill="var(--text-dim)" font-family="DM Mono, monospace" font-size="10">
+                            Cost Basis ${{ "{:,.0f}".format(portfolio_history.cost_basis) }}
+                        </text>
+                        {% endif %}
+
+                        <!-- Green/red area fills -->
+                        {% if svg.chart.cb_in_range %}
+                        <defs>
+                            <clipPath id="clip-above">
+                                <rect x="{{ svg.chart.plot_x }}" y="{{ svg.chart.plot_y }}"
+                                      width="{{ svg.chart.plot_w }}" height="{{ svg.chart.cb_y|float - svg.chart.plot_y }}"/>
+                            </clipPath>
+                            <clipPath id="clip-below">
+                                <rect x="{{ svg.chart.plot_x }}" y="{{ svg.chart.cb_y }}"
+                                      width="{{ svg.chart.plot_w }}" height="{{ svg.chart.plot_y + svg.chart.plot_h - svg.chart.cb_y|float }}"/>
+                            </clipPath>
+                        </defs>
+                        <polygon points="{{ svg.chart.area_points }}"
+                                 fill="rgba(45,212,191,0.12)" clip-path="url(#clip-above)"/>
+                        <polygon points="{{ svg.chart.area_points }}"
+                                 fill="rgba(248,113,113,0.12)" clip-path="url(#clip-below)"/>
+                        {% endif %}
+
+                        <!-- Main line -->
+                        <polyline points="{{ svg.chart.points }}"
+                                  fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>
+
+                        <!-- Current value dot -->
+                        <circle cx="{{ svg.chart.last_x }}" cy="{{ svg.chart.last_y }}"
+                                r="4" fill="var(--gold)" stroke="var(--bg2)" stroke-width="2"/>
+
+                        <!-- Annotations -->
+                        <text x="{{ svg.chart.min_x }}" y="{{ svg.chart.min_y_pos }}"
+                              text-anchor="middle" fill="var(--text-dim)" font-family="DM Mono, monospace" font-size="9">
+                            Min ${{ "{:,.0f}".format(portfolio_history.min_value) }}
+                        </text>
+                        <text x="{{ svg.chart.max_x }}" y="{{ svg.chart.max_y_pos }}"
+                              text-anchor="middle" fill="var(--text)" font-family="DM Mono, monospace" font-size="9" font-weight="500">
+                            Max ${{ "{:,.0f}".format(portfolio_history.max_value) }}
+                        </text>
+                        <text x="{{ svg.chart.last_x }}" y="{{ svg.chart.last_y|float - 10 }}"
+                              text-anchor="end" fill="var(--text)" font-family="DM Mono, monospace" font-size="10" font-weight="500">
+                            ${{ "{:,.0f}".format(portfolio_history.current_value) }}
+                        </text>
+
+                        <!-- X-axis labels -->
+                        {% for xl in svg.chart.x_labels %}
+                        <text x="{{ xl.x }}" y="{{ svg.chart.plot_y + svg.chart.plot_h + 18 }}"
+                              text-anchor="middle" fill="var(--text-dim)" font-family="DM Mono, monospace" font-size="9">{{ xl.label }}</text>
+                        {% endfor %}
+
+                        <!-- Hover points -->
+                        {% for hp in svg.chart.hover_points %}
+                        <circle cx="{{ hp.x }}" cy="{{ hp.y }}" r="6" fill="transparent" stroke="none">
+                            <title>{{ hp.date }}: ${{ hp.value }}</title>
+                        </circle>
+                        {% endfor %}
+                    </svg>
+                </div>
+                {% if portfolio_history.warnings %}
+                <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--text-dim);">
+                    {% for w in portfolio_history.warnings %}
+                    <span>&#9888; {{ w }}</span><br>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Positions Table -->
+            <div class="card">
+                <div class="card-title">Position Details</div>
+                <div class="options-table-wrap">
+                    <table class="options-table">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Shares</th>
+                                <th>Avg Cost</th>
+                                <th>Live Price</th>
+                                <th>P&amp;L $</th>
+                                <th>P&amp;L %</th>
+                                <th>Beta</th>
+                                <th>Weight</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pos in performance.positions %}
+                            <tr>
+                                <td class="ticker-col">{{ pos.ticker }}</td>
+                                <td>{{ pos.shares }}</td>
+                                <td>${{ "%.2f"|format(pos.avg_cost) }}</td>
+                                <td>${{ "%.2f"|format(pos.live_price) }}</td>
+                                <td class="{{ 'pnl-pos' if pos.pnl >= 0 else 'pnl-neg' }}">
+                                    {{ '+' if pos.pnl >= 0 else '' }}${{ "{:,.0f}".format(pos.pnl) }}
+                                </td>
+                                <td class="{{ 'pnl-pos' if pos.pnl_pct >= 0 else 'pnl-neg' }}">
+                                    {{ '+' if pos.pnl_pct >= 0 else '' }}{{ "%.1f"|format(pos.pnl_pct) }}%
+                                </td>
+                                <td>
+                                    {% if portfolio_beta.position_betas and pos.ticker in portfolio_beta.position_betas %}
+                                    {{ "%.2f"|format(portfolio_beta.position_betas[pos.ticker]) }}
+                                    {% else %}&mdash;{% endif %}
+                                </td>
+                                <td>{{ pos.weight }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Best / Worst -->
+                {% if performance.best and performance.worst and performance.positions|length > 1 %}
+                <div class="perf-boxes">
+                    <div class="perf-box" style="background:rgba(45,212,191,0.06);border:1px solid rgba(45,212,191,0.2);">
+                        <div class="perf-box-label" style="color:var(--teal);">Best Performer</div>
+                        <div class="perf-box-value">
+                            {{ performance.best.ticker }}
+                            <span style="color:var(--teal);">+{{ "%.1f"|format(performance.best.pnl_pct) }}%</span>
+                        </div>
+                    </div>
+                    <div class="perf-box" style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);">
+                        <div class="perf-box-label" style="color:var(--red);">Worst Performer</div>
+                        <div class="perf-box-value">
+                            {{ performance.worst.ticker }}
+                            <span style="color:var(--red);">{{ "%.1f"|format(performance.worst.pnl_pct) }}%</span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Beta insight -->
+                {% if portfolio_beta.portfolio_beta is not none %}
+                <div class="beta-insight">
+                    <strong style="color:var(--gold);">Beta Insight:</strong>
+                    Your portfolio moves approximately {{ "%.0f"|format(portfolio_beta.portfolio_beta * 100) }}% for every 100% move in the S&amp;P 500.
+                    {% if portfolio_beta.spy_correlation is not none %}
+                    SPY correlation: <strong>{{ portfolio_beta.spy_correlation }}%</strong>.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+        </div><!-- /tab-overview -->
+
+        <!-- ==========================================
+             TAB: HEDGE STRATEGY
+             ========================================== -->
+        <div id="tab-hedge" class="tab-content">
+
+            <div class="summary-banner">
+                <div class="summary-text">
+                    {% if result.protection_threshold > 0 %}
+                    You're protected if your portfolio drops more than <strong>{{ result.protection_threshold }}%</strong>
+                    {% else %}
+                    Your portfolio is hedged at the <strong>{{ result.hedge_level }}</strong> level
+                    {% endif %}
+                </div>
+                <div class="summary-sub">
+                    {{ result.hedge_level | capitalize }} protection &mdash; covering {{ (result.hedge_pct * 100) | int }}% of your exposure with put options expiring in ~45 days
+                </div>
+            </div>
+
+            {% if result.any_fallback %}
+            <div class="fallback-warning">
+                <span class="warn-icon">&#9888;</span>
+                <span>Some positions used estimated pricing (Black-Scholes) because no liquid options were available. These are marked below.</span>
+            </div>
+            {% endif %}
+
+            {% if result.errors %}
+            <div class="fallback-warning" style="border-color:var(--gold);background:rgba(201,168,76,0.08);">
+                <span class="warn-icon">&#9888;</span>
+                <span>{% for err in result.errors %}{{ err }}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+            </div>
+            {% endif %}
+
+            <div class="metrics">
+                <div class="metric-box">
+                    <div class="metric-label">Portfolio Value</div>
+                    <div class="metric-value">${{ "{:,.0f}".format(result.total_value) }}</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Hedge Cost</div>
+                    <div class="metric-value red">${{ "{:,.0f}".format(result.total_cost) }}</div>
+                    <div class="metric-sub">{{ result.total_cost_pct }}% of portfolio</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Net Protected Value</div>
+                    <div class="metric-value teal">${{ "{:,.0f}".format(result.net_protected) }}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Options to Buy</div>
+                <div class="options-table-wrap">
+                    <table class="options-table">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Contracts</th>
+                                <th>Strike</th>
+                                <th>Expiry</th>
+                                <th>Cost</th>
+                                <th>Breakeven</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pos in result.positions %}
+                            {% if pos.error is defined %}
+                            <tr class="error-row">
+                                <td class="ticker-col">{{ pos.ticker }}</td>
+                                <td colspan="5">{{ pos.error }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td class="ticker-col">
+                                    {{ pos.ticker }}
+                                    {% if pos.is_fallback %}<span class="fallback-badge">&#9888; est.</span>{% endif %}
+                                </td>
+                                <td>{{ pos.contracts }}</td>
+                                <td>${{ "%.2f"|format(pos.strike) }}</td>
+                                <td>{{ pos.expiry }}</td>
+                                <td class="cost-col">${{ "{:,.0f}".format(pos.cost) }}</td>
+                                <td>${{ "%.2f"|format(pos.breakeven) }}</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cost Breakdown</div>
+                <div class="cost-chart">
+                    {% set valid_positions = result.positions | selectattr('cost', 'defined') | list %}
+                    {% set max_cost = valid_positions | map(attribute='cost') | max if valid_positions else 1 %}
+                    {% for pos in valid_positions %}
+                    {% if pos.error is not defined %}
+                    <div class="cost-bar-row">
+                        <div class="cost-bar-label">{{ pos.ticker }}</div>
+                        <div class="cost-bar-track">
+                            <div class="cost-bar-fill" style="width:{{ (pos.cost / max_cost * 100) if max_cost > 0 else 0 }}%">
+                                <span class="cost-bar-amount">${{ "{:,.0f}".format(pos.cost) }} ({{ pos.cost_pct }}%)</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Hedge Position Details</div>
+                <div class="options-table-wrap">
+                    <table class="options-table">
+                        <thead>
+                            <tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Value</th><th>IV</th><th>Delta</th><th>DTE</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for pos in result.positions %}
+                            {% if pos.error is not defined %}
+                            <tr>
+                                <td class="ticker-col">{{ pos.ticker }}</td>
+                                <td>{{ pos.shares }}</td>
+                                <td>${{ "%.2f"|format(pos.price) }}</td>
+                                <td>${{ "{:,.0f}".format(pos.position_value) }}</td>
+                                <td>{{ "%.1f"|format(pos.iv * 100) }}%</td>
+                                <td>{{ "%.3f"|format(pos.delta) }}</td>
+                                <td>{{ pos.dte }}d</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Next Steps</div>
+                <ol class="steps-list">
+                    <li>Open your brokerage account and navigate to options trading</li>
+                    <li>For each row above, place a <strong>Buy to Open</strong> order for the listed number of put contracts at the specified strike and expiry</li>
+                    <li>Use <strong>limit orders</strong> at or near the mid price shown. Avoid market orders on options to prevent slippage.</li>
+                    <li>These puts expire on the listed dates. Re-evaluate your hedge 2&ndash;3 weeks before expiry to decide whether to roll forward.</li>
+                    <li>Monitor your portfolio delta periodically. If your stock positions change significantly, recalculate your hedge.</li>
+                </ol>
+            </div>
+
+        </div><!-- /tab-hedge -->
+
+        <div class="footer">
+            Portfolio Shield &mdash; Not financial advice. Options involve risk. Consult a financial advisor.
+        </div>
+    </div>
+
+    <script>
+        function switchTab(name, btn) {
+            document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.getElementById('tab-' + name).classList.add('active');
+            btn.classList.add('active');
+        }
+    </script>
+</body>
+</html>
