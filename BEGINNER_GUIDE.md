@@ -356,8 +356,6 @@ The app is still an MVP. It does **not** yet do all of the things a production-g
 
 Examples of current limitations:
 
-- no live brokerage integration
-- no order execution
 - no advanced mixed hedge optimizer
 - no full Greeks engine beyond the delta-centered sizing logic
 - simplified scenarios
