@@ -1,4 +1,4 @@
-# Delta Hedging
+﻿# Delta Hedging
 
 This repository contains a retail-focused portfolio protection project built around delta-based hedge advisory workflows.
 
@@ -23,6 +23,10 @@ The current app in `portfolio-shield/`:
 3. Builds a hedge recommendation using delta-based sizing logic.
 4. Shows recommended contracts, scenarios, alternatives considered, and review triggers.
 5. Stores generated recommendations locally for traceability.
+
+## Beginner Guide
+
+For a full beginner-friendly explanation of what the app does, how delta-based hedging is applied, and how the recommendation engine compares strategies, read [BEGINNER_GUIDE.md](./BEGINNER_GUIDE.md).
 
 ## Running The App
 
