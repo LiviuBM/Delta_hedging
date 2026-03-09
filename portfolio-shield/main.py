@@ -1,37 +1,33 @@
-"""
-main.py — FastAPI app, routes, startup.
+﻿"""
+main.py - FastAPI app, routes, and startup.
 """
 
 import logging
 import math
 import time
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from hedge import build_delta_advice
+from history import get_performance_summary, get_portfolio_beta, get_portfolio_history
 from quotes import fetch_quote
-from hedge import calculate_portfolio_hedge
-from history import get_portfolio_history, get_portfolio_beta, get_performance_summary
+from storage import init_storage, save_recommendation
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
-app = FastAPI(title="Portfolio Shield", version="1.0.0")
+app = FastAPI(title="Portfolio Shield", version="2.0.0")
 templates = Jinja2Templates(directory="templates")
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+@app.on_event("startup")
+async def startup_event():
+    init_storage()
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -40,54 +36,58 @@ async def index(request: Request):
 
 @app.get("/api/quote/{ticker}")
 async def api_quote(ticker: str):
-    """JSON endpoint: live quote for a single ticker."""
     try:
         quote = fetch_quote(ticker)
         return JSONResponse(quote)
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except Exception as e:
-        logger.error("Quote API error for %s: %s", ticker, e)
-        return JSONResponse(
-            {"error": f"Could not fetch data for '{ticker}'. Please try again."},
-            status_code=503,
-        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except RuntimeError as exc:
+        logger.error("Quote API service error for %s: %s", ticker, exc)
+        return JSONResponse({"error": str(exc)}, status_code=503)
+    except Exception as exc:
+        logger.error("Quote API unexpected error for %s: %s", ticker, exc)
+        return JSONResponse({"error": "Unexpected quote error."}, status_code=500)
 
 
 @app.post("/analyze", response_class=HTMLResponse)
 async def analyze(request: Request):
-    """Process portfolio form and return hedge strategy results."""
     form = await request.form()
 
-    # Parse positions from form
     tickers = form.getlist("ticker")
     shares_list = form.getlist("shares")
     avg_cost_list = form.getlist("avg_cost")
     hedge_level = form.get("hedge_level", "moderate")
+    objective = form.get("objective", "reduce_downside")
+    experience = form.get("experience", "beginner")
+    horizon_days = _safe_int(form.get("horizon_days"), default=45, minimum=21, maximum=90)
+    max_budget = _safe_float(form.get("max_budget"), default=0.0, minimum=0.0)
 
     if hedge_level not in ("light", "moderate", "full"):
         hedge_level = "moderate"
+    if objective not in ("reduce_downside", "protect_gains", "crash_hedge", "partial_delta"):
+        objective = "reduce_downside"
+    if experience not in ("beginner", "intermediate", "advanced"):
+        experience = "beginner"
 
     positions = []
     errors = []
 
-    for i, ticker in enumerate(tickers):
+    for idx, ticker in enumerate(tickers):
         ticker = ticker.strip().upper()
         if not ticker:
             continue
 
-        shares_str = shares_list[i] if i < len(shares_list) else ""
-        avg_cost_str = avg_cost_list[i] if i < len(avg_cost_list) else ""
+        shares_str = shares_list[idx] if idx < len(shares_list) else ""
+        avg_cost_str = avg_cost_list[idx] if idx < len(avg_cost_list) else ""
 
         try:
             shares = int(shares_str)
             if shares <= 0:
-                raise ValueError("Shares must be positive")
+                raise ValueError
         except (ValueError, TypeError):
             errors.append(f"Invalid share count for {ticker}")
             continue
 
-        # Parse avg_cost (optional — defaults to live price later)
         avg_cost = None
         if avg_cost_str and avg_cost_str.strip():
             try:
@@ -97,181 +97,196 @@ async def analyze(request: Request):
             except (ValueError, TypeError):
                 avg_cost = None
 
-        # Fetch live price
         try:
             quote = fetch_quote(ticker)
-            positions.append({
-                "ticker": ticker,
-                "shares": shares,
-                "price": quote["price"],
-                "avg_cost": avg_cost if avg_cost else quote["price"],
-            })
+            positions.append(
+                {
+                    "ticker": ticker,
+                    "shares": shares,
+                    "price": quote["price"],
+                    "avg_cost": avg_cost if avg_cost else quote["price"],
+                }
+            )
         except ValueError:
             errors.append(f"Unknown ticker: {ticker}")
+        except RuntimeError:
+            errors.append(f"Market data unavailable for {ticker}. Please retry.")
         except Exception:
-            errors.append(f"Could not fetch data for {ticker}. Service may be unavailable.")
+            errors.append(f"Could not fetch data for {ticker}.")
 
     if errors and not positions:
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "errors": errors,
-        })
+        return templates.TemplateResponse("index.html", {"request": request, "errors": errors})
 
     if not positions:
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "errors": ["Please enter at least one valid position."],
-        })
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "errors": ["Please enter at least one valid position."]},
+        )
 
-    # Calculate hedge
-    try:
-        result = calculate_portfolio_hedge(positions, hedge_level)
-        result["timestamp"] = time.strftime("%H:%M ET")
-        result["errors"] = errors  # pass through any partial errors
-    except Exception as e:
-        logger.error("Hedge calculation failed: %s", e)
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "errors": [f"Calculation error: {e}"],
-        })
-
-    # Portfolio analysis (non-blocking — failures don't break hedge results)
     performance = get_performance_summary(positions)
 
     portfolio_history = {"dates": [], "values": [], "cost_basis": 0, "warnings": []}
     try:
         portfolio_history = get_portfolio_history(positions)
-    except Exception as e:
-        logger.error("History fetch failed: %s", e)
-        portfolio_history["warnings"] = [str(e)]
+    except Exception as exc:
+        logger.error("History fetch failed: %s", exc)
+        portfolio_history["warnings"] = [str(exc)]
 
     portfolio_beta = {"portfolio_beta": None, "position_betas": {}, "spy_correlation": None, "warnings": []}
     try:
         portfolio_beta = get_portfolio_beta(positions)
-    except Exception as e:
-        logger.error("Beta calc failed: %s", e)
-        portfolio_beta["warnings"] = [str(e)]
+    except Exception as exc:
+        logger.error("Beta calc failed: %s", exc)
+        portfolio_beta["warnings"] = [str(exc)]
 
-    # Pre-compute SVG data (trig not available in Jinja2)
+    profile = {
+        "objective": objective,
+        "experience": experience,
+        "horizon_days": horizon_days,
+        "max_budget": max_budget,
+    }
+
+    try:
+        recommendation = build_delta_advice(
+            positions,
+            hedge_level,
+            profile,
+            portfolio_beta=portfolio_beta.get("portfolio_beta"),
+        )
+        recommendation["timestamp"] = time.strftime("%H:%M ET")
+        recommendation["errors"] = errors
+    except Exception as exc:
+        logger.error("Advisory calculation failed: %s", exc)
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "errors": [f"Calculation error: {exc}"]},
+        )
+
     svg_data = _build_svg_data(performance, portfolio_history)
 
-    return templates.TemplateResponse("results.html", {
-        "request": request,
-        "result": result,
+    payload = {
+        "profile": profile,
+        "positions": positions,
         "performance": performance,
-        "portfolio_history": portfolio_history,
         "portfolio_beta": portfolio_beta,
-        "svg": svg_data,
-    })
+        "recommendation": recommendation,
+    }
+    recommendation_id = save_recommendation(payload)
+
+    return templates.TemplateResponse(
+        "results.html",
+        {
+            "request": request,
+            "profile": profile,
+            "performance": performance,
+            "portfolio_history": portfolio_history,
+            "portfolio_beta": portfolio_beta,
+            "recommendation": recommendation,
+            "recommendation_id": recommendation_id,
+            "svg": svg_data,
+        },
+    )
 
 
-# ---------------------------------------------------------------------------
-# SVG pre-computation helpers
-# ---------------------------------------------------------------------------
-PALETTE = ["#c9a84c", "#2dd4bf", "#f87171", "#818cf8", "#fb923c", "#a78bfa", "#34d399", "#f472b6"]
+PALETTE = ["#d3a44a", "#45c4b0", "#ef7d57", "#7b8cff", "#f0b35b", "#f87171", "#4fd1c5", "#f6ad55"]
 
 
 def _build_pie_slices(weights: list[dict], key: str) -> list[dict]:
-    """Build SVG arc path data for pie chart slices.
-
-    Each entry: {path, color, ticker, pct, label_x, label_y, show_label}
-    """
     slices = []
-    cum = 0.0
-    for i, pos in enumerate(weights):
-        pct = pos[key] / 100.0
+    cumulative = 0.0
+    for idx, position in enumerate(weights):
+        pct = position[key] / 100.0
         if pct <= 0:
             continue
-        start = cum * 2 * math.pi
-        end = (cum + pct) * 2 * math.pi
+        start = cumulative * 2 * math.pi
+        end = (cumulative + pct) * 2 * math.pi
         large = 1 if pct > 0.5 else 0
 
-        sx, sy = math.cos(start), math.sin(start)
-        ex, ey = math.cos(end), math.sin(end)
+        start_x, start_y = math.cos(start), math.sin(start)
+        end_x, end_y = math.cos(end), math.sin(end)
+        mid = (cumulative + pct / 2) * 2 * math.pi
+        label_x, label_y = 0.65 * math.cos(mid), 0.65 * math.sin(mid)
 
-        mid = (cum + pct / 2) * 2 * math.pi
-        lx, ly = 0.65 * math.cos(mid), 0.65 * math.sin(mid)
-
-        path = f"M 0 0 L {sx:.4f} {sy:.4f} A 1 1 0 {large} 1 {ex:.4f} {ey:.4f} Z"
-        slices.append({
-            "path": path,
-            "color": PALETTE[i % len(PALETTE)],
-            "ticker": pos["ticker"],
-            "pct": pos[key],
-            "label_x": f"{lx:.4f}",
-            "label_y": f"{ly:.4f}",
-            "show_label": pct > 0.06,
-        })
-        cum += pct
+        slices.append(
+            {
+                "path": f"M 0 0 L {start_x:.4f} {start_y:.4f} A 1 1 0 {large} 1 {end_x:.4f} {end_y:.4f} Z",
+                "color": PALETTE[idx % len(PALETTE)],
+                "ticker": position["ticker"],
+                "pct": position[key],
+                "label_x": f"{label_x:.4f}",
+                "label_y": f"{label_y:.4f}",
+                "show_label": pct > 0.06,
+            }
+        )
+        cumulative += pct
     return slices
 
 
 def _build_chart_points(history: dict) -> dict:
-    """Pre-compute SVG line chart coordinates."""
     dates = history.get("dates", [])
     values = history.get("values", [])
     if len(values) < 5:
-        return {"points": "", "hover_points": [], "x_labels": [], "y_labels": [],
-                "cb_y": 0, "last_x": 0, "last_y": 0, "min_x": 0, "min_y_pos": 0,
-                "max_x": 0, "has_data": False}
+        return {
+            "points": "",
+            "hover_points": [],
+            "x_labels": [],
+            "y_labels": [],
+            "cb_y": 0,
+            "last_x": 0,
+            "last_y": 0,
+            "min_x": 0,
+            "min_y_pos": 0,
+            "max_x": 0,
+            "has_data": False,
+        }
 
-    ch_w, ch_h = 860, 320
+    chart_w, chart_h = 860, 320
     pad_l, pad_r, pad_t, pad_b = 70, 20, 30, 50
-    plot_w = ch_w - pad_l - pad_r
-    plot_h = ch_h - pad_t - pad_b
+    plot_w = chart_w - pad_l - pad_r
+    plot_h = chart_h - pad_t - pad_b
 
-    v_min = history["min_value"]
-    v_max = history["max_value"]
-    v_range = v_max - v_min if v_max != v_min else 1
-    cb = history["cost_basis"]
-    n = len(values)
+    value_min = history["min_value"]
+    value_max = history["max_value"]
+    value_range = value_max - value_min if value_max != value_min else 1
+    cost_basis = history["cost_basis"]
+    count = len(values)
 
-    # Build polyline points
-    pts = []
-    for i, v in enumerate(values):
-        x = pad_l + (i / (n - 1)) * plot_w
-        y = pad_t + plot_h - ((v - v_min) / v_range * plot_h)
-        pts.append(f"{x:.1f},{y:.1f}")
-    points_str = " ".join(pts)
+    points = []
+    for idx, value in enumerate(values):
+        x_pos = pad_l + (idx / (count - 1)) * plot_w
+        y_pos = pad_t + plot_h - ((value - value_min) / value_range * plot_h)
+        points.append(f"{x_pos:.1f},{y_pos:.1f}")
+    points_str = " ".join(points)
 
-    # Cost basis Y position
-    cb_y = pad_t + plot_h - ((cb - v_min) / v_range * plot_h)
-    cb_in_range = v_min <= cb <= v_max
-
-    # Last point (current)
+    cb_y = pad_t + plot_h - ((cost_basis - value_min) / value_range * plot_h)
+    cb_in_range = value_min <= cost_basis <= value_max
     last_x = pad_l + plot_w
-    last_y = pad_t + plot_h - ((values[-1] - v_min) / v_range * plot_h)
+    last_y = pad_t + plot_h - ((values[-1] - value_min) / value_range * plot_h)
 
-    # Min/Max positions
-    min_idx = values.index(v_min)
-    max_idx = values.index(v_max)
-    min_x = pad_l + (min_idx / (n - 1)) * plot_w
-    max_x = pad_l + (max_idx / (n - 1)) * plot_w
+    min_idx = values.index(value_min)
+    max_idx = values.index(value_max)
+    min_x = pad_l + (min_idx / (count - 1)) * plot_w
+    max_x = pad_l + (max_idx / (count - 1)) * plot_w
 
-    # Hover points (every 3rd + last)
     hover_points = []
-    for i, v in enumerate(values):
-        if i % 3 == 0 or i == n - 1:
-            hx = pad_l + (i / (n - 1)) * plot_w
-            hy = pad_t + plot_h - ((v - v_min) / v_range * plot_h)
-            hover_points.append({"x": f"{hx:.1f}", "y": f"{hy:.1f}",
-                                 "date": dates[i], "value": f"{v:,.0f}"})
+    for idx, value in enumerate(values):
+        if idx % 3 == 0 or idx == count - 1:
+            x_pos = pad_l + (idx / (count - 1)) * plot_w
+            y_pos = pad_t + plot_h - ((value - value_min) / value_range * plot_h)
+            hover_points.append({"x": f"{x_pos:.1f}", "y": f"{y_pos:.1f}", "date": dates[idx], "value": f"{value:,.0f}"})
 
-    # X-axis labels (~6 labels)
-    step = max(n // 6, 1)
     x_labels = []
-    for i in range(0, n, step):
-        lx = pad_l + (i / (n - 1)) * plot_w
-        x_labels.append({"x": f"{lx:.1f}", "label": dates[i][5:]})
+    step = max(count // 6, 1)
+    for idx in range(0, count, step):
+        x_pos = pad_l + (idx / (count - 1)) * plot_w
+        x_labels.append({"x": f"{x_pos:.1f}", "label": dates[idx][5:]})
 
-    # Y-axis labels (5 ticks)
     y_labels = []
-    for i in range(5):
-        yv = v_min + (v_range * i / 4)
-        yy = pad_t + plot_h - (plot_h * i / 4)
-        y_labels.append({"y": f"{yy:.1f}", "label": f"${yv:,.0f}"})
+    for idx in range(5):
+        label_value = value_min + (value_range * idx / 4)
+        y_pos = pad_t + plot_h - (plot_h * idx / 4)
+        y_labels.append({"y": f"{y_pos:.1f}", "label": f"${label_value:,.0f}"})
 
-    # Area polygon (for green/red fill — closes to cost basis line)
     close_left = f"{pad_l:.1f},{cb_y:.1f}"
     close_right = f"{pad_l + plot_w:.1f},{cb_y:.1f}"
     area_points = points_str + f" {close_right} {close_left}"
@@ -295,13 +310,12 @@ def _build_chart_points(history: dict) -> dict:
         "plot_y": pad_t,
         "plot_w": plot_w,
         "plot_h": plot_h,
-        "ch_w": ch_w,
-        "ch_h": ch_h,
+        "ch_w": chart_w,
+        "ch_h": chart_h,
     }
 
 
 def _build_svg_data(performance: dict, history: dict) -> dict:
-    """Build all pre-computed SVG data for templates."""
     return {
         "pie_initial": _build_pie_slices(performance["positions"], "cost_weight"),
         "pie_live": _build_pie_slices(performance["positions"], "weight"),
@@ -310,9 +324,22 @@ def _build_svg_data(performance: dict, history: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
+def _safe_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def _safe_float(value, default: float, minimum: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, parsed)
+
+
 if __name__ == "__main__":
     import uvicorn
 

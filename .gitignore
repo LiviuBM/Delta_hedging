@@ -26,3 +26,6 @@ build/
 
 # Logs
 *.log
+
+# Local app state
+*.db

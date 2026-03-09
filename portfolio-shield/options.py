@@ -1,8 +1,7 @@
-"""
-options.py — Options chain fetching, filtering, selection, and Black-Scholes fallback.
+﻿"""
+options.py - Options chain fetching, filtering, selection, and fallback pricing.
 """
 
-import time
 import math
 import logging
 from datetime import datetime, timedelta
@@ -14,18 +13,14 @@ from quotes import get_cached
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Cache TTL
-# ---------------------------------------------------------------------------
 CHAIN_TTL = 300  # 5 minutes
+DEFAULT_MIN_OI = 100
+DEFAULT_MAX_SPREAD_PCT = 0.18
 
-# ---------------------------------------------------------------------------
-# OTM offsets by protection level
-# ---------------------------------------------------------------------------
 OTM_OFFSETS = {
-    "light": 0.10,     # 10% OTM
-    "moderate": 0.05,   # 5% OTM
-    "full": 0.00,       # ATM
+    "light": 0.10,
+    "moderate": 0.05,
+    "full": 0.00,
 }
 
 HEDGE_PCTS = {
@@ -34,9 +29,6 @@ HEDGE_PCTS = {
     "full": 1.00,
 }
 
-# ---------------------------------------------------------------------------
-# Black-Scholes helpers (put pricing + delta)
-# ---------------------------------------------------------------------------
 
 def bs_put_price(S: float, K: float, T: float, r: float, sigma: float) -> float:
     """European put price via Black-Scholes."""
@@ -55,26 +47,19 @@ def bs_put_delta(S: float, K: float, T: float, r: float, sigma: float) -> float:
     return norm.cdf(d1) - 1.0
 
 
-# ---------------------------------------------------------------------------
-# Chain fetching + selection
-# ---------------------------------------------------------------------------
-
 def fetch_chain(ticker: str) -> dict:
-    """Fetch all put-options expiries from yfinance for *ticker*.
-
-    Returns dict keyed by expiry date string -> DataFrame of puts.
-    """
+    """Fetch all put expiries from yfinance for the ticker."""
 
     def _fetch():
         tk = yf.Ticker(ticker.upper())
-        expiries = tk.options  # tuple of date strings
+        expiries = tk.options
         chains = {}
         for exp in expiries:
             try:
                 chain = tk.option_chain(exp)
                 chains[exp] = chain.puts
-            except Exception as e:
-                logger.warning("Could not fetch chain %s/%s: %s", ticker, exp, e)
+            except Exception as exc:
+                logger.warning("Could not fetch chain %s/%s: %s", ticker, exp, exc)
         return chains
 
     return get_cached(f"chain:{ticker.upper()}", CHAIN_TTL, _fetch)
@@ -85,93 +70,107 @@ def select_put(
     current_price: float,
     hedge_level: str,
     risk_free_rate: float = 0.05,
+    target_dte: int = 45,
+    min_open_interest: int = DEFAULT_MIN_OI,
+    max_spread_pct: float = DEFAULT_MAX_SPREAD_PCT,
 ) -> dict:
-    """Select the best protective put for a position.
-
-    Returns dict with: strike, expiry, mid_price, delta, iv, is_fallback
-    """
+    """Select a put option using retail-oriented liquidity and spread checks."""
     otm_offset = OTM_OFFSETS[hedge_level]
     target_strike = current_price * (1.0 - otm_offset)
 
     now = datetime.now()
-    min_dte = 21
-    max_dte = 90
-    target_dte = 45
+    min_dte = max(21, target_dte - 20)
+    max_dte = min(120, target_dte + 30)
 
     chains = fetch_chain(ticker)
-
     best = None
     best_score = float("inf")
 
     for exp_str, puts in chains.items():
         exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
         dte = (exp_date - now).days
-
         if dte < min_dte or dte > max_dte:
             continue
+        if puts.empty:
+            continue
 
-        # Filter for liquidity
-        liquid = puts[puts["openInterest"] > 100].copy() if "openInterest" in puts.columns else puts.copy()
+        liquid = puts.copy()
+        if "openInterest" in liquid.columns:
+            liquid = liquid[liquid["openInterest"].fillna(0) >= min_open_interest]
         if liquid.empty:
             continue
 
-        # Find closest strike to target
-        liquid = liquid.copy()
-        liquid["strike_dist"] = (liquid["strike"] - target_strike).abs()
-        closest = liquid.sort_values("strike_dist").iloc[0]
+        for _, row in liquid.iterrows():
+            strike = float(row.get("strike", 0.0) or 0.0)
+            bid = float(row.get("bid", 0.0) or 0.0)
+            ask = float(row.get("ask", 0.0) or 0.0)
+            if strike <= 0 or ask <= 0:
+                continue
 
-        # Compute mid price
-        bid = closest.get("bid", 0) or 0
-        ask = closest.get("ask", 0) or 0
-        mid = (bid + ask) / 2.0
+            mid = (bid + ask) / 2.0 if bid > 0 else ask
+            if mid <= 0.05:
+                continue
 
-        if mid <= 0.01:
-            continue
+            spread_pct = (ask - bid) / ask if ask > 0 else 1.0
+            if spread_pct > max_spread_pct:
+                continue
 
-        # Score: prefer closest to 45 DTE, then closest strike
-        dte_score = abs(dte - target_dte)
-        strike_score = abs(closest["strike"] - target_strike) / current_price
-        score = dte_score + strike_score * 100
+            iv = float(row.get("impliedVolatility", 0.0) or 0.0)
+            if iv <= 0:
+                iv = max(_estimate_iv(ticker), 0.18)
 
-        # Get IV from chain if available
-        iv = closest.get("impliedVolatility", None)
-        if iv is None or iv <= 0:
-            iv = 0.30  # default fallback
+            T = dte / 365.0
+            delta = bs_put_delta(current_price, strike, T, risk_free_rate, iv)
+            volume = int(row.get("volume", 0) or 0)
+            open_interest = int(row.get("openInterest", 0) or 0)
 
-        T = dte / 365.0
-        delta = bs_put_delta(current_price, closest["strike"], T, risk_free_rate, iv)
+            strike_score = abs(strike - target_strike) / max(current_price, 0.01)
+            dte_score = abs(dte - target_dte) / max(target_dte, 1)
+            spread_score = spread_pct
+            liquidity_bonus = 1.0 / max(open_interest + volume, 1)
+            score = strike_score * 45 + dte_score * 25 + spread_score * 30 + liquidity_bonus * 200
 
-        candidate = {
-            "strike": round(float(closest["strike"]), 2),
-            "expiry": exp_str,
-            "dte": dte,
-            "mid_price": round(mid, 2),
-            "delta": round(delta, 4),
-            "iv": round(iv, 4),
-            "open_interest": int(closest.get("openInterest", 0)),
-            "is_fallback": False,
-        }
+            candidate = {
+                "ticker": ticker.upper(),
+                "strike": round(strike, 2),
+                "expiry": exp_str,
+                "dte": dte,
+                "mid_price": round(mid, 2),
+                "bid": round(bid, 2),
+                "ask": round(ask, 2),
+                "spread_pct": round(spread_pct * 100, 2),
+                "delta": round(delta, 4),
+                "iv": round(iv, 4),
+                "volume": volume,
+                "open_interest": open_interest,
+                "target_strike": round(target_strike, 2),
+                "is_fallback": False,
+            }
+            if score < best_score:
+                best_score = score
+                best = candidate
 
-        if score < best_score:
-            best_score = score
-            best = candidate
-
-    # Fallback to Black-Scholes if nothing found
     if best is None:
-        logger.warning("No liquid options for %s — using Black-Scholes fallback", ticker)
+        logger.warning("No liquid options for %s - using fallback pricing", ticker)
         T = target_dte / 365.0
         iv = _estimate_iv(ticker)
         strike = round(target_strike, 2)
         mid = round(bs_put_price(current_price, strike, T, risk_free_rate, iv), 2)
         delta = round(bs_put_delta(current_price, strike, T, risk_free_rate, iv), 4)
         best = {
+            "ticker": ticker.upper(),
             "strike": strike,
             "expiry": (now + timedelta(days=target_dte)).strftime("%Y-%m-%d"),
             "dte": target_dte,
             "mid_price": mid,
+            "bid": mid,
+            "ask": mid,
+            "spread_pct": 0.0,
             "delta": delta,
             "iv": round(iv, 4),
+            "volume": 0,
             "open_interest": 0,
+            "target_strike": strike,
             "is_fallback": True,
         }
 
@@ -179,7 +178,7 @@ def select_put(
 
 
 def _estimate_iv(ticker: str) -> float:
-    """Estimate IV from yfinance history (annualized 30-day realized vol)."""
+    """Estimate IV from realized volatility over the last 3 months."""
     try:
         tk = yf.Ticker(ticker.upper())
         hist = tk.history(period="3mo")
@@ -190,21 +189,3 @@ def _estimate_iv(ticker: str) -> float:
         return max(vol, 0.10)
     except Exception:
         return 0.30
-
-
-# ---------------------------------------------------------------------------
-# Standalone test
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    import json, sys
-
-    tickers = sys.argv[1:] or ["AAPL"]
-    for t in tickers:
-        print(f"\n=== {t} ===")
-        for level in ("light", "moderate", "full"):
-            from quotes import fetch_quote
-
-            q = fetch_quote(t)
-            result = select_put(t, q["price"], level)
-            print(f"\n  {level.upper()}:")
-            print(json.dumps(result, indent=4))

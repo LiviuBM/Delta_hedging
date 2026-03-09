@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Shield — Delta Hedge Calculator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0e1a;
+            --bg2: #111827;
+            --bg3: #1a2234;
+            --gold: #c9a84c;
+            --teal: #2dd4bf;
+            --red: #f87171;
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --border: #2a3346;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 860px;
+            padding: 2rem 1.5rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .header h1 {
+            font-family: 'DM Serif Display', serif;
+            font-size: 2.4rem;
+            color: var(--gold);
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-dim);
+            font-size: 1.05rem;
+        }
+
+        /* Errors */
+        .error-box {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid var(--red);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .error-box p {
+            color: var(--red);
+            font-size: 0.9rem;
+            margin-bottom: 0.3rem;
+        }
+
+        /* Form card */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.3rem;
+            color: var(--gold);
+            margin-bottom: 1.25rem;
+        }
+
+        /* Position rows */
+        .positions-header {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr 0.8fr 1fr 40px;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .positions-header span {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+        }
+
+        .position-row {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr 0.8fr 1fr 40px;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            align-items: center;
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--gold);
+        }
+
+        input::placeholder {
+            color: var(--text-dim);
+            opacity: 0.6;
+        }
+
+        .price-cell {
+            position: relative;
+        }
+
+        .price-display {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.9rem;
+            padding: 0.65rem 0.85rem;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-height: 42px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .price-display .price-val {
+            color: var(--text);
+        }
+
+        .price-display .price-badge {
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .price-badge.up {
+            background: rgba(45, 212, 191, 0.15);
+            color: var(--teal);
+        }
+
+        .price-badge.down {
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--red);
+        }
+
+        .price-display.loading {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .btn-remove {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .btn-remove:hover {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .btn-add {
+            background: transparent;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            color: var(--text-dim);
+            padding: 0.6rem;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9rem;
+            width: 100%;
+            transition: all 0.2s;
+            margin-top: 0.25rem;
+        }
+
+        .btn-add:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        /* Protection level */
+        .level-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .level-card {
+            position: relative;
+            background: var(--bg3);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .level-card:hover {
+            border-color: var(--gold);
+        }
+
+        .level-card input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .level-card.selected {
+            border-color: var(--gold);
+            background: rgba(201, 168, 76, 0.08);
+        }
+
+        .level-card .level-name {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.15rem;
+            color: var(--text);
+            margin-bottom: 0.35rem;
+        }
+
+        .level-card .level-desc {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        .level-card .level-pct {
+            font-family: 'DM Mono', monospace;
+            font-size: 1.5rem;
+            color: var(--gold);
+            margin-bottom: 0.25rem;
+        }
+
+        /* Submit */
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--gold), #b8943f);
+            border: none;
+            border-radius: 10px;
+            color: var(--bg);
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-submit:hover {
+            opacity: 0.9;
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 700px) {
+            .container { padding: 1.25rem 1rem; }
+            .header h1 { font-size: 1.8rem; }
+            .positions-header { display: none; }
+            .position-row {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: auto auto auto;
+            }
+            .position-row .price-cell { order: 4; }
+            .position-row .btn-remove { order: 5; justify-self: end; }
+            .level-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Portfolio Shield</h1>
+            <p>Protect your holdings with delta-hedged put options</p>
+        </div>
+
+        {% if errors %}
+        <div class="error-box">
+            {% for err in errors %}
+            <p>{{ err }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form id="hedge-form" action="/analyze" method="POST">
+
+            <!-- Positions -->
+            <div class="card">
+                <div class="card-title">Your Positions</div>
+
+                <div class="positions-header">
+                    <span>Ticker</span>
+                    <span>Shares</span>
+                    <span>Avg Cost</span>
+                    <span>Live Price</span>
+                    <span></span>
+                </div>
+
+                <div id="positions-list">
+                    <div class="position-row">
+                        <input type="text" name="ticker" placeholder="AAPL" autocomplete="off" spellcheck="false" class="ticker-input">
+                        <input type="number" name="shares" placeholder="100" min="1">
+                        <input type="number" name="avg_cost" placeholder="150.00" min="0" step="0.01">
+                        <div class="price-cell">
+                            <div class="price-display">
+                                <span class="price-val">—</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-remove" onclick="removeRow(this)">&times;</button>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-add" onclick="addRow()">+ Add another position</button>
+            </div>
+
+            <!-- Protection Level -->
+            <div class="card">
+                <div class="card-title">Protection Level</div>
+                <div class="level-grid">
+                    <label class="level-card" onclick="selectLevel(this)">
+                        <input type="radio" name="hedge_level" value="light">
+                        <div class="level-pct">25%</div>
+                        <div class="level-name">Light</div>
+                        <div class="level-desc">10% OTM puts covering a quarter of your exposure</div>
+                    </label>
+                    <label class="level-card selected" onclick="selectLevel(this)">
+                        <input type="radio" name="hedge_level" value="moderate" checked>
+                        <div class="level-pct">50%</div>
+                        <div class="level-name">Moderate</div>
+                        <div class="level-desc">5% OTM puts covering half your exposure</div>
+                    </label>
+                    <label class="level-card" onclick="selectLevel(this)">
+                        <input type="radio" name="hedge_level" value="full">
+                        <div class="level-pct">100%</div>
+                        <div class="level-name">Full</div>
+                        <div class="level-desc">ATM puts covering your entire position</div>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-submit" id="submit-btn">Calculate Hedge</button>
+        </form>
+
+        <div class="footer">
+            Portfolio Shield &mdash; Options data via Yahoo Finance. Not financial advice.
+        </div>
+    </div>
+
+    <script>
+        // ---- Add / Remove rows ----
+        function addRow() {
+            const list = document.getElementById('positions-list');
+            const row = document.createElement('div');
+            row.className = 'position-row';
+            row.innerHTML = `
+                <input type="text" name="ticker" placeholder="MSFT" autocomplete="off" spellcheck="false" class="ticker-input">
+                <input type="number" name="shares" placeholder="50" min="1">
+                <input type="number" name="avg_cost" placeholder="280.00" min="0" step="0.01">
+                <div class="price-cell">
+                    <div class="price-display">
+                        <span class="price-val">—</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-remove" onclick="removeRow(this)">&times;</button>
+            `;
+            list.appendChild(row);
+            bindTickerEvents(row.querySelector('.ticker-input'));
+        }
+
+        function removeRow(btn) {
+            const list = document.getElementById('positions-list');
+            if (list.children.length > 1) {
+                btn.closest('.position-row').remove();
+            }
+        }
+
+        // ---- Level selection ----
+        function selectLevel(card) {
+            document.querySelectorAll('.level-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            card.querySelector('input[type="radio"]').checked = true;
+        }
+
+        // ---- Auto-fetch price on blur ----
+        let fetchTimers = {};
+
+        function bindTickerEvents(input) {
+            input.addEventListener('blur', () => fetchPrice(input));
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    fetchPrice(input);
+                }
+            });
+        }
+
+        function fetchPrice(input) {
+            const ticker = input.value.trim().toUpperCase();
+            if (!ticker) return;
+
+            input.value = ticker;
+            const row = input.closest('.position-row');
+            const priceDisplay = row.querySelector('.price-display');
+            priceDisplay.innerHTML = '<span class="price-val" style="color:var(--text-dim);font-style:italic">Loading…</span>';
+
+            fetch(`/api/quote/${encodeURIComponent(ticker)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        priceDisplay.innerHTML = `<span class="price-val" style="color:var(--red)">Not found</span>`;
+                        return;
+                    }
+                    const dir = data.change >= 0 ? 'up' : 'down';
+                    const sign = data.change >= 0 ? '+' : '';
+                    priceDisplay.innerHTML = `
+                        <span class="price-val">$${data.price.toFixed(2)}</span>
+                        <span class="price-badge ${dir}">${sign}${data.change_pct.toFixed(1)}%</span>
+                    `;
+                })
+                .catch(() => {
+                    priceDisplay.innerHTML = `<span class="price-val" style="color:var(--red)">Error</span>`;
+                });
+        }
+
+        // Bind events to initial row
+        document.querySelectorAll('.ticker-input').forEach(bindTickerEvents);
+
+        // ---- Form submission ----
+        document.getElementById('hedge-form').addEventListener('submit', function(e) {
+            const tickers = document.querySelectorAll('input[name="ticker"]');
+            let hasValid = false;
+            tickers.forEach(t => { if (t.value.trim()) hasValid = true; });
+            if (!hasValid) {
+                e.preventDefault();
+                alert('Please enter at least one ticker.');
+                return;
+            }
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('submit-btn').textContent = 'Calculating…';
+        });
+    </script>
+</body>
+</html>
